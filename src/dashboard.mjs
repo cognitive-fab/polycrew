@@ -93,8 +93,13 @@ function runCard(r, now) {
        <tbody>${r.orders.map(orderRow).join('')}</tbody></table>`
     : `<p class="dim">No open orders${r.timers.length ? ' — waiting on a timer.' : '.'}</p>`;
 
+  // A run whose workflow no longer passes the admission gate keeps going, but
+  // nothing new can start. Worth saying on the page rather than leaving a
+  // person to wonder why the crew stopped taking work.
+  const degraded = r.admitted === false
+    ? ' <span class="overdue">workflow no longer admitted</span>' : '';
   return `<section class="run">
-    <h3>${esc(r.workflow)} <span class="key">${esc(r.key)}</span></h3>
+    <h3>${esc(r.workflow)} <span class="key">${esc(r.key)}</span>${degraded}</h3>
     <div class="state">${state}</div>
     ${orders}
     ${timers ? `<ul class="timers">${timers}</ul>` : ''}
