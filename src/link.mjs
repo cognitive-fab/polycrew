@@ -18,6 +18,12 @@ import { createServer, request as httpRequest } from 'node:http';
 
 export const LOOPBACK = '127.0.0.1';
 
+/** Loopback, however it is spelled: 127.0.0.0/8, ::1, or the name. */
+export const isLoopback = (addr = '') => {
+  const a = String(addr).replace(/^::ffff:/, '');
+  return a === '::1' || a === 'localhost' || /^127\./.test(a);
+};
+
 /**
  * Try one port. Three outcomes, and they are not the same:
  *   - a bound server        this session is the broker
@@ -77,6 +83,17 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
  * @returns {Promise<{server: import('node:http').Server|null, port: number}>}
  */
 export async function acquire(ports, { host = LOOPBACK, settleMs = 120 } = {}) {
+  // There is no authentication anywhere in polycrew — the crew is as open as a
+  // shell on the machine, which is fine on loopback and nowhere else. Binding
+  // any other interface would put an unauthenticated dashboard and an
+  // unauthenticated RPC endpoint on the network, so it is refused here rather
+  // than left to whoever sets the option.
+  if (!isLoopback(host)) {
+    throw new Error(
+      `polycrew binds loopback only, not '${host}': nothing here is authenticated. `
+      + 'Reach another machine with an SSH tunnel.',
+    );
+  }
   const candidates = Array.isArray(ports) ? ports : [ports];
   for (const port of candidates) {
     let outcome = await tryBind(port, host);

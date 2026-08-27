@@ -36,6 +36,6 @@
     "test": "node --no-warnings --test \"test/*.test.mjs\""
   },
   "dependencies": {
-    "polyflow": "https://github.com/cognitive-fab/polyflow/archive/49c8afcd1b4d50c7ce260a9e81598a9aa45a1890.tar.gz"
+    "polyflow": "https://github.com/cognitive-fab/polyflow/archive/9d96e4b57b08983be675b5bfea941bab48d7deed.tar.gz"
   }
 }

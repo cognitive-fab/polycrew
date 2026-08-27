@@ -63,6 +63,8 @@ const view = (r) => ({
   status: r.status,
   claimedBy: r.claimed_by ?? null,
   claimedUntil: r.claimed_until ?? null,
+  issuedAt: r.issued_at,
+  closedAt: r.closed_at ?? null,
 });
 
 export class StoreBroker {
@@ -106,8 +108,16 @@ export class StoreBroker {
     });
   }
 
-  open(instanceId) {
-    this.sweep();
+  /**
+   * Open orders for one run.
+   *
+   * `sweep: false` reads without releasing lapsed claims. The dashboard needs
+   * it: sweeping is a repair, and a page that repaired what it was reporting
+   * on could never show a lease going overdue — which is the one thing a
+   * person watching a crew is watching for.
+   */
+  open(instanceId, { sweep = true } = {}) {
+    if (sweep) this.sweep();
     return this.db.prepare(
       'SELECT * FROM pf_orders WHERE instance_id = ? AND status = ? ORDER BY issued_at',
     ).all(instanceId, OPEN).map(view);

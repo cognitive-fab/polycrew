@@ -12,6 +12,8 @@ import { Polyflow, makeTools } from 'polyflow';
 
 import { Attribution, attributing } from './attribution.mjs';
 import { crewTools } from './crew-tools.mjs';
+import { dashboardRoutes, snapshot } from './dashboard.mjs';
+import { entries } from './registry.mjs';
 import { acquire, askBroker, isBrokerGone, serveBroker } from './link.mjs';
 import { StoreBroker } from './store-broker.mjs';
 
@@ -50,6 +52,9 @@ export class CrewNode {
       ready: () => this.ready,
       call: (method, params) => this.invoke(method, params),
       info: () => ({ crew: this.area, actor: this.actor, port: this.port, pid: process.pid, mode: this.mode }),
+      // The broker already holds a loopback port; the page a person reads is
+      // the same port, not a second server to start and remember.
+      extra: dashboardRoutes(() => this.snapshot()),
     });
 
     this.broker = new StoreBroker({ dbPath: this.orders });
@@ -72,7 +77,25 @@ export class CrewNode {
     // the /rpc path passes the forwarding session's actor explicitly.
     this.tools = this.localTools.map((t) => ({ ...t, handler: (args) => t.handler(args, this.actor) }));
     this.ready = true;
-    this.log(`broker on :${this.port}`);
+    this.log(`broker on :${this.port} · dashboard http://127.0.0.1:${this.port}/dashboard`);
+  }
+
+  /**
+   * The facts behind the dashboard. Only the broker can answer: it is the one
+   * process holding the store, which is exactly why the page lives on its port.
+   */
+  snapshot() {
+    return snapshot({
+      pf: this.pf,
+      broker: this.broker,
+      area: this.area,
+      actor: this.actor,
+      // Who is attached right now. The registry reaps dead pids on read, so a
+      // session that died without saying goodbye simply stops being listed.
+      sessions: entries(this.area).map((e) => ({
+        actor: e.actor, agent: e.agent, roles: e.roles ?? [], pid: e.pid, startedAt: e.startedAt,
+      })),
+    });
   }
 
   /** Run a tool here. The broker is the only process that ever does this. */
