@@ -43,6 +43,7 @@ node bin/polycrew.mjs      # an MCP stdio server
 | `POLYCREW_AGENT` | agent-class area | `polycrew` |
 | `POLYCREW_INSTANCE` | instance area — one crew | the current directory's name |
 | `POLYCREW_ROLES` | roles this session may play | none |
+| `POLYCREW_HOME` | where the registry lives | `~/.polyflow` |
 
 **Identity and roles come from the process, never from a tool argument.** A
 session that could name itself could collide with another, and one that could
@@ -53,7 +54,10 @@ gate. Anything a model can say, a model can say wrongly.
 
 - [x] **1 — scaffold.** polyflow as a pinned dependency; the six tools served
       through it; roles read from the environment.
-- [ ] 2 — identity and the instance registry
+- [x] **2 — identity and the registry.** Actor ids minted per process; a
+      registry under `~/.polyflow/registry/<crew>/<actor>.json`, one file per
+      session, reaped when the process is gone. The port a crew's broker will
+      bind is derived from its name.
 - [ ] 3 — the order store and a claiming broker
 - [ ] 4 — election and proxy: the first process on a crew binds its port and
       becomes the broker; the rest proxy to it

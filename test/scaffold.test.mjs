@@ -13,6 +13,8 @@ import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
+import { entries } from '../src/registry.mjs';
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const POLYFLOW = resolve(dirname(createRequire(import.meta.url).resolve('polyflow')), '..');
 
@@ -39,7 +41,7 @@ function session(env = {}) {
     child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: mine, method, params }) + '\n');
   });
 
-  return { rpc, kill: () => child.kill(), stderr: () => stderr };
+  return { rpc, kill: (sig) => child.kill(sig), stderr: () => stderr, pid: child.pid };
 }
 
 test('polycrew serves polyflow, as a dependency', async (t) => {
@@ -118,4 +120,42 @@ test('roles are read from the environment, never from a tool', async (t) => {
     assert.ok(!props.includes('actor'), `${tool.name} must not take an actor`);
   }
   assert.match(s.stderr(), /\[polycrew\] roles: gatherer, reviewer/);
+});
+
+test('two sessions on one crew register separately, and a dead one is reaped', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'polycrew-crew-'));
+  const env = {
+    POLYCREW_HOME: join(dir, 'home'),
+    POLYCREW_DB: join(dir, 'crew.sqlite'),
+    POLYCREW_INSTANCE: 'crew-test',
+  };
+  const before = process.env.POLYCREW_HOME;
+  process.env.POLYCREW_HOME = env.POLYCREW_HOME;
+
+  const a = session(env);
+  const b = session(env);
+  t.after(() => {
+    a.kill(); b.kill();
+    if (before === undefined) delete process.env.POLYCREW_HOME;
+    else process.env.POLYCREW_HOME = before;
+    try { rmSync(dir, { recursive: true, force: true }); } catch { /* windows locks */ }
+  });
+
+  // Both are up once they answer; registration happens before serve().
+  await a.rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {} });
+  await b.rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {} });
+
+  const both = entries('crew-test');
+  assert.equal(both.length, 2, 'each session owns one registry entry');
+  assert.equal(new Set(both.map((e) => e.actor)).size, 2, 'ids neither session chose, and distinct');
+  assert.deepEqual([...new Set(both.map((e) => e.port))].length, 1, 'one crew, one broker port');
+  assert.deepEqual(both.map((e) => e.pid).sort(), [a.pid, b.pid].sort());
+  assert.match(a.stderr(), /\[polycrew\] actor polycrew\/[0-9a-f]{8} · crew crew-test · port \d+/);
+
+  // Kill one without letting it clean up: the survivor's next read reaps it.
+  a.kill('SIGKILL');
+  await new Promise((r) => setTimeout(r, 300));
+  const left = entries('crew-test');
+  assert.equal(left.length, 1, 'a session whose process is gone leaves nothing behind');
+  assert.equal(left[0].pid, b.pid);
 });
