@@ -1,0 +1,41 @@
+{
+  "name": "polycrew",
+  "version": "0.0.1",
+  "description": "Several agents - and the people among them - working one polyflow run at the same time. Coordination is a journaled step of a machine that was checked before it loaded; agents never talk to each other, they talk to the run.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cognitive-fab/polycrew.git"
+  },
+  "homepage": "https://github.com/cognitive-fab/polycrew#readme",
+  "bugs": {
+    "url": "https://github.com/cognitive-fab/polycrew/issues"
+  },
+  "keywords": [
+    "ai-agents",
+    "mcp",
+    "multi-agent",
+    "workflow-engine",
+    "state-machine",
+    "polyflow"
+  ],
+  "bin": {
+    "polycrew": "bin/polycrew.mjs"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --no-warnings --test \"test/*.test.mjs\""
+  },
+  "dependencies": {
+    "polyflow": "https://github.com/cognitive-fab/polyflow/archive/d8770361a70cc4c8e72bc4e5fadcb4a8b774a136.tar.gz"
+  }
+}
