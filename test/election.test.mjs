@@ -70,6 +70,18 @@ test('a proxy call is served by the broker, and the broker owns the store', asyn
   const fromBroker = await broker.call('workflow_state', { instance: started.instance });
   assert.equal(fromBroker.instance, started.instance);
   assert.deepEqual(fromBroker.state, started.state, 'both sessions see one run, not two');
+
+  // A report crosses the seam with nothing but an order id, so the broker has
+  // to resolve that id back to its run — the one contract obligation a store
+  // broker is most likely to miss, because open() drops the field on purpose.
+  const after = await proxy.call('workflow_report', {
+    order_id: started.next[0].order_id, result: { count: 3 },
+  });
+  assert.equal(after.instance, started.instance, 'the report reached the right run');
+  assert.notDeepEqual(after.state, started.state, 'and moved it');
+  assert.deepEqual(
+    (await broker.call('workflow_state', { instance: started.instance })).state, after.state,
+    'the session that did not report sees the same run');
 });
 
 test('two sessions starting the same run get the same run, across the proxy seam', async (t) => {
