@@ -18,9 +18,14 @@ import { join, resolve } from 'node:path';
 const slug = (s) => String(s).replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'default';
 
 export function home() {
-  return process.env.POLYCREW_HOME
-    ? resolve(process.env.POLYCREW_HOME)
-    : join(homedir(), '.polyflow');
+  if (!process.env.POLYCREW_HOME) return join(homedir(), '.polyflow');
+  // A POSIX path from Git Bash (/c/Users/...) resolves to C:\c\Users\... on
+  // Windows — a real directory, quietly the wrong one, so two sessions of one
+  // crew would register in different places and never find each other.
+  const p = process.env.POLYCREW_HOME;
+  return resolve(process.platform === 'win32' && /^\/[A-Za-z]\//.test(p)
+    ? `${p[1].toUpperCase()}:${p.slice(2)}`
+    : p);
 }
 
 export const registryDir = (area) =>

@@ -7,9 +7,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
-import { entries, mintActor, portFor, register, registryDir, unregister } from '../src/registry.mjs';
+import { entries, home, mintActor, portFor, register, registryDir, unregister } from '../src/registry.mjs';
 
 /** Each test gets its own POLYCREW_HOME so none can see another's sessions. */
 function sandbox(t) {
@@ -96,4 +96,29 @@ test('crews are separate, and unregister is idempotent', (t) => {
   unregister('acme', a.actor);
   assert.equal(entries('acme').length, 0);
   assert.equal(entries('beta').length, 1, 'leaving one crew must not touch another');
+});
+
+test('a Git Bash path and its Windows spelling are the same place', (t) => {
+  // /c/Users/... is what Git Bash and WSL hand out, and Windows node resolves
+  // it to C:\c\Users\... — a real directory, quietly the wrong one. Two
+  // sessions of one crew, started from two shells, would register in two
+  // places and never find each other.
+  const before = process.env.POLYCREW_HOME;
+  t.after(() => {
+    if (before === undefined) delete process.env.POLYCREW_HOME;
+    else process.env.POLYCREW_HOME = before;
+  });
+
+  process.env.POLYCREW_HOME = 'C:/Users/nobody/crew-home';
+  const windows = home();
+  process.env.POLYCREW_HOME = '/c/Users/nobody/crew-home';
+  const gitbash = home();
+
+  if (process.platform === 'win32') {
+    assert.equal(gitbash, windows, 'both spellings name one directory');
+    assert.doesNotMatch(gitbash, /[\/]c[\/]Users/i, 'and not a drive-letter directory');
+  } else {
+    assert.equal(gitbash, resolve('/c/Users/nobody/crew-home'),
+      'off Windows a leading /c/ is an ordinary directory and must be left alone');
+  }
 });

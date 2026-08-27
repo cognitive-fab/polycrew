@@ -32,11 +32,26 @@ CREATE TABLE IF NOT EXISTS pf_orders (
   claimed_by    TEXT,
   claimed_until INTEGER,
   issued_at     INTEGER NOT NULL,
-  closed_at     INTEGER
+  closed_at     INTEGER,
+  -- A result that was reported while no handler was parked to receive it.
+  -- Kept HERE rather than dropped, so a piece of work that was actually done
+  -- is never done a second time just because a process exited.
+  result_json      TEXT,
+  result_ok        INTEGER,
+  result_error     TEXT,
+  result_permanent INTEGER,
+  reported_by      TEXT,
+  reported_at      INTEGER
 );
 CREATE INDEX IF NOT EXISTS pf_orders_open ON pf_orders (instance_id, status);
 CREATE INDEX IF NOT EXISTS pf_orders_claim ON pf_orders (status, claimed_by);
 `;
+
+/** Columns added after the first release; CREATE TABLE IF NOT EXISTS misses them. */
+const ADDED = {
+  result_json: 'TEXT', result_ok: 'INTEGER', result_error: 'TEXT',
+  result_permanent: 'INTEGER', reported_by: 'TEXT', reported_at: 'INTEGER',
+};
 
 export function openOrderStore(path) {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
@@ -44,10 +59,20 @@ export function openOrderStore(path) {
   db.exec('PRAGMA journal_mode = WAL');
   db.exec('PRAGMA busy_timeout = 5000');
   db.exec(SCHEMA);
+  // A store written by an older build has the table but not these columns, and
+  // an open sweep in it is exactly the thing worth not losing.
+  const have = new Set(db.prepare('PRAGMA table_info(pf_orders)').all().map((c) => c.name));
+  for (const [col, type] of Object.entries(ADDED)) {
+    if (!have.has(col)) db.exec(`ALTER TABLE pf_orders ADD COLUMN ${col} ${type}`);
+  }
   return db;
 }
 
 const OPEN = 'open';
+// Done by an actor and written down, but not yet handed to the engine: the
+// broker that would have received it is gone. The next time the engine offers
+// this order, the stored result settles it immediately.
+const REPORTED = 'reported';
 
 /** A row as the tool surface wants it. */
 const view = (r) => ({
@@ -87,6 +112,9 @@ export class StoreBroker {
   handler(kind, spec = {}) {
     return (payload, intentId, ctx) => new Promise((resolve, reject) => {
       const at = this.now();
+      // Read BEFORE the upsert: a result reported into a dead broker is
+      // waiting on this row, and the upsert is about to reset the status.
+      const prior = this.db.prepare('SELECT * FROM pf_orders WHERE order_id = ?').get(intentId);
       this.db.prepare(`
         INSERT INTO pf_orders (order_id, instance_id, kind, tool, target, args, why, role,
                                attempt, status, issued_at)
@@ -99,6 +127,22 @@ export class StoreBroker {
         JSON.stringify(payload ?? {}), spec.why ?? '', spec.role ?? null,
         ctx.attempt, OPEN, at,
       );
+
+      // Somebody already did this work and wrote the answer down while no
+      // broker was listening. Deliver it now rather than offering the order to
+      // a second actor, which is how the same work gets done twice.
+      if (prior && prior.status === REPORTED) {
+        this.db.prepare('UPDATE pf_orders SET status = ?, closed_at = ? WHERE order_id = ?')
+          .run(prior.result_ok ? 'done' : 'failed', this.now(), intentId);
+        if (prior.result_ok) {
+          const value = prior.result_json ? JSON.parse(prior.result_json) : {};
+          resolve(value && typeof value === 'object' ? value : { value });
+        } else {
+          reject(Object.assign(new Error(prior.result_error || 'tool failed'),
+            { permanent: Boolean(prior.result_permanent) }));
+        }
+        return;
+      }
 
       // The agent is the callback and may take turns, not milliseconds.
       const timer = setInterval(() => { ctx.extendLease(this.heartbeatMs * 2).catch(() => {}); },
@@ -142,6 +186,16 @@ export class StoreBroker {
     this.sweep();
     const row = this.db.prepare('SELECT * FROM pf_orders WHERE order_id = ?').get(orderId);
     if (!row) return { ok: false, reason: 'unknown-order' };
+    if (row.status === REPORTED) {
+      // Recorded once already. A second report must not overwrite the first,
+      // any more than a second report of a live order may.
+      return {
+        ok: false,
+        reason: 'already-reported',
+        holder: row.reported_by,
+        hint: 'this order was already done and written down; call workflow_next for other work',
+      };
+    }
     if (row.status !== OPEN) {
       return { ok: false, reason: 'order-expired', hint: 'call workflow_next again' };
     }
@@ -151,9 +205,29 @@ export class StoreBroker {
 
     const waiter = this.pending.get(orderId);
     if (!waiter) {
-      // The broker that parked this handler is gone. The effect lease will
-      // expire and re-offer it; reporting into nothing would lose the result.
-      return { ok: false, reason: 'order-expired', hint: 'call workflow_next again' };
+      // The broker that parked this handler is gone — this process opened the
+      // store afterwards, so the ROW is here but the promise is not.
+      //
+      // Refusing here would throw away work that was actually done: the agent
+      // has already changed the file, run the tests, sent the message. The
+      // order would later be re-offered and somebody would do it AGAIN, which
+      // is the one thing this whole design exists to prevent. So write the
+      // result down instead. The next time the engine offers this order, the
+      // handler settles from it immediately and nobody is asked to repeat it.
+      this.db.prepare(`
+        UPDATE pf_orders SET status = ?, result_json = ?, result_ok = ?, result_error = ?,
+                             result_permanent = ?, reported_by = ?, reported_at = ?
+        WHERE order_id = ?
+      `).run(
+        REPORTED, JSON.stringify(result ?? {}), ok ? 1 : 0, error || null,
+        permanent ? 1 : 0, actor ?? null, this.now(), orderId,
+      );
+      return {
+        ok: true,
+        deferred: true,
+        hint: 'recorded — the broker that was waiting for this is gone, so the run takes it '
+          + 'up when the engine next offers the order. Do not do this work again.',
+      };
     }
 
     clearInterval(waiter.timer);

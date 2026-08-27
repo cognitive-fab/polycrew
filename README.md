@@ -27,7 +27,7 @@ can claim, and a page a person can watch.
 git clone https://github.com/cognitive-fab/polycrew
 cd polycrew
 npm install
-npm test          # 59 tests, no model, no network
+npm test          # 64 tests, no model, no network
 ```
 
 Node 22.13+ is required (it uses `node:sqlite`).
@@ -138,6 +138,20 @@ session dies mid-order, its claim expires and the order returns to the offer
 list at a higher attempt. **Only the holder may report.** A report from anyone
 else is refused with `not-your-order` and the run does not move.
 
+### A report is never lost
+
+If you report an order and the broker that was waiting for it has since died —
+its process exited, and this one opened the store afterwards — the result is
+**written down rather than refused**. You get a note, not an error, and the run
+takes it up when the engine next offers that order. Nobody is asked to redo
+work that was already done, which is the failure this design exists to prevent
+rather than one it should fall into.
+
+The gap between recorded and delivered is `POLYCREW_EFFECT_LEASE_MS`. If your
+sessions are short-lived — headless agents rather than open terminals — run one
+long-lived session as the crew's broker instead of relying on this;
+[the codemod example](examples/codemod-sweep) shows how and explains why.
+
 ---
 
 ## The dashboard
@@ -220,6 +234,7 @@ Everything is an environment variable, read once at boot.
 | `POLYCREW_AGENT` | agent-class area | `polycrew` |
 | `POLYCREW_ROLES` | roles this session may play, comma-separated | none |
 | `POLYCREW_LEASE_MS` | how long a claim holds without renewal | `300000` (5 min) |
+| `POLYCREW_EFFECT_LEASE_MS` | how long before a dead broker's order is re-offered | `300000` (5 min) |
 | `POLYCREW_PORT` | broker port | derived from the crew |
 | `POLYCREW_HOME` | where the registry lives | `~/.polyflow` |
 

@@ -76,8 +76,8 @@ to read as a diff against a clean one. Creates a branch. Adds its own working
 directory to `.git/info/exclude` rather than editing your `.gitignore`.
 
 **3. A broker that outlives the agents.** One process whose only job is to hold
-the crew's port and its parked work orders for the whole sweep. **This is not
-optional, and the reason is the most useful thing in this example** — see
+the crew's port and its parked work orders for the whole sweep. The reason is
+the most useful thing in this example — see
 [below](#the-bug-this-example-was-built-on).
 
 **4. Planner.** One headless agent reads the candidates and decides which
@@ -150,12 +150,32 @@ in the broker's **memory**. The planner was the broker. When the planner exited,
 those handlers went with it, and the workers' reports arrived somewhere with
 nothing left to report to.
 
-polyflow does recover on its own: the effect lease expires, the handler re-runs,
-and the order is re-offered at a higher attempt. But that lease is minutes and
-the workers were done in seconds.
+### What was fixed because of it
 
-The fix is step 3 — one long-lived broker process, started before any agent and
-killed after the last one. Every agent is then a proxy to it.
+Losing a completed piece of work is the exact failure this whole design exists
+to prevent — the order would later be re-offered and somebody would do it
+again. So polycrew no longer refuses that report. **A result reported when no
+handler is parked is written down instead**, on the order row, and the next
+time the engine offers that order it settles from the stored result and never
+asks anyone to repeat the work. A second report of an already-recorded order is
+refused with `already-reported` rather than overwriting the first, and a
+recorded order is not offered to anyone in the meantime.
+
+So the edits those two workers made would survive today. Their reports come
+back with a note instead of an error:
+
+    recorded — the broker that was waiting for this is gone, so the run takes
+    it up when the engine next offers the order. Do not do this work again.
+
+### Why the sweep still starts a broker
+
+Because *recorded* is not *delivered*. A stored result reaches the run only
+when polyrun's effect lease lapses and the order comes back — five minutes by
+default, tunable with `POLYCREW_EFFECT_LEASE_MS`. A sweep that finishes in
+ninety seconds would end with every file changed on disk and every run still
+showing as in progress.
+
+The durable report is the safety net. The long-lived broker is the design.
 
 **The general lesson for anyone building on polycrew: if your participants come
 and go, give the crew a broker that does not.** A crew of long-running

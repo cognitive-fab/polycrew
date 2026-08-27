@@ -214,3 +214,72 @@ test('a session that dies mid-order loses it, and another finishes the work', as
   const after = await getJson(broker.port(), '/dashboard.json');
   assert.equal(after.runs.length, 0, 'a finished run is no longer in flight');
 });
+
+test('work reported into a dead broker is not lost, and not done twice', async (t) => {
+  // The failure this replaces: an agent changes a file, runs the tests, and
+  // reports — into a broker that exited when the session before it did. The
+  // order row is right there and claimable, but the promise the engine was
+  // waiting on went with the process. Refusing that report throws away work
+  // that was really done, and the order is later handed to somebody who does
+  // it again.
+  const dir = mkdtempSync(join(tmpdir(), 'polycrew-durable-'));
+  const env = {
+    POLYCREW_HOME: join(dir, 'home'),
+    POLYCREW_DB: join(dir, 'crew.sqlite'),
+    POLYCREW_INSTANCE: 'durable',
+    POLYCREW_WORKFLOWS: WORKFLOWS,
+    POLYCREW_LEASE_MS: '60000',
+    POLYCREW_EFFECT_LEASE_MS: '1500',   // so a re-offer is watchable
+  };
+  const open = () => session(env);
+
+  const first = open();
+  t.after(() => { try { rmSync(dir, { recursive: true, force: true }); } catch { /* windows locks */ } });
+  t.after(() => first.kill('SIGKILL'));
+  await first.rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {} });
+  await first.ready();
+
+  const started = await first.call('workflow_start', {
+    workflow: 'release-check', input: { version: VERSION },
+  });
+  const order = started.next[0].order_id;
+
+  // The broker goes away with the order still open. Everything it was holding
+  // in memory goes with it.
+  first.kill('SIGKILL');
+  await settle(400);
+
+  const second = open();
+  t.after(() => second.kill('SIGKILL'));
+  await second.rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {} });
+  await second.ready();
+  assert.equal(second.mode(), 'broker', 'the survivor opened the store');
+
+  // It can see and claim the order, because that part lives in SQLite.
+  const got = await second.call('workflow_claim', { order_id: order });
+  assert.equal(got.claimed, true);
+
+  // …and the report is RECORDED rather than refused.
+  const ack = await second.call('workflow_report', { order_id: order, result: {} });
+  assert.equal(ack.error, undefined, 'work that was done must not come back as an error');
+  assert.match(ack.note ?? '', /Do not do this work again/);
+
+  // Until it is delivered, nobody else is offered it — this is the whole
+  // point: a recorded result must not look like work still to do.
+  assert.equal((await second.call('workflow_next', {})).orders
+    .some((o) => o.order_id === order), false);
+
+  // The engine re-offers the effect once its lease lapses, the stored result
+  // settles it there and then, and the run moves without anyone repeating it.
+  let state = null;
+  for (let i = 0; i < 40; i += 1) {
+    await settle(200);
+    state = await second.call('workflow_state', { instance: started.instance });
+    if (state.state.checksDone > 0) break;
+  }
+  assert.equal(state.state.checksDone, 1, 'the recorded result reached the run');
+
+  const { journal } = await second.call('workflow_journal', { instance: started.instance });
+  const completions = journal.filter((r) => r.action_id === `${order}:done`);
+  assert.equal(completions.length, 1, 'delivered once, not once per re-offer');
+});

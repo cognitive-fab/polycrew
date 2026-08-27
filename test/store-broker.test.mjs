@@ -223,9 +223,71 @@ test('orders survive the broker: rows stay open when a process gives up', async 
   assert.equal(settled.state, 'rejected');
   assert.equal(b.open('crew|acme|wf|k').length, 1, 'the work is not lost with the process');
 
-  // But nothing is parked any more, so a report has nowhere to go.
-  const orphan = b.report('deploy-1', { result: {}, actor: 'claude-code/aaaa' });
-  assert.equal(orphan.ok, false);
-  assert.equal(orphan.reason, 'order-expired');
-  assert.match(orphan.hint, /workflow_next/);
+  // Nothing is parked any more, so the result has nowhere to GO — but it is
+  // still a real piece of work that was really done, and throwing it away is
+  // how a run ends up doing it twice.
+  const orphan = b.report('deploy-1', { result: { count: 9 }, actor: 'claude-code/aaaa' });
+  assert.equal(orphan.ok, true);
+  assert.equal(orphan.deferred, true);
+  assert.match(orphan.hint, /Do not do this work again/);
+
+  // And it is not offered to anyone else in the meantime.
+  assert.equal(b.offers().length, 0, 'work that is done must not look like work to do');
+  assert.equal(b.open('crew|acme|wf|k').length, 0);
+});
+
+test('a result reported into a dead broker is delivered when the order comes back', async (t) => {
+  const { b } = broker(t);
+  const first = issue(b);
+  b.claim('deploy-1', 'claude-code/aaaa');
+
+  b.abort('broker died');
+  await flush();
+  assert.equal(first.settled.state, 'rejected');
+
+  const ack = b.report('deploy-1', { result: { count: 9 }, actor: 'claude-code/aaaa' });
+  assert.equal(ack.deferred, true);
+
+  // polyrun re-offers the effect after its lease expires: same intent id, a
+  // higher attempt. The stored result settles it there and then, and the
+  // handler never parks — so nobody is ever asked to do it a second time.
+  const second = issue(b, { attempt: 2 });
+  await flush();
+  assert.equal(second.settled.state, 'resolved');
+  assert.deepEqual(second.settled.value, { count: 9 });
+  assert.equal(b.orderById('deploy-1').status, 'done');
+  assert.equal(b.offers().length, 0);
+});
+
+test('a failure survives a dead broker too, permanence and all', async (t) => {
+  const { b } = broker(t);
+  issue(b);
+  b.abort('broker died');
+  await flush();
+
+  b.report('deploy-1', { ok: false, permanent: true, error: 'operator declined' });
+  const again = issue(b, { attempt: 2 });
+  await flush();
+
+  assert.equal(again.settled.state, 'rejected');
+  assert.equal(again.settled.value.permanent, true, 'a result, not an infrastructure fault');
+  assert.match(again.settled.value.message, /operator declined/);
+});
+
+test('a recorded result is not overwritten by a second report', async (t) => {
+  const { b } = broker(t);
+  issue(b);
+  b.abort('broker died');
+  await flush();
+
+  assert.equal(b.report('deploy-1', { result: { count: 1 }, actor: 'claude-code/aaaa' }).deferred, true);
+
+  const twice = b.report('deploy-1', { result: { count: 2 }, actor: 'claude-code/bbbb' });
+  assert.equal(twice.ok, false);
+  assert.equal(twice.reason, 'already-reported');
+  assert.equal(twice.holder, 'claude-code/aaaa');
+
+  const delivered = issue(b, { attempt: 2 });
+  await flush();
+  assert.deepEqual(delivered.settled.value, { count: 1 }, 'the first answer stands');
 });
