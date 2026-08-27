@@ -169,7 +169,12 @@ one run per file, several agents draining them, and no file edited twice. It is
 the shortest path from "I see what this is for" to seeing it happen.
 
 ```bash
-examples/codemod-sweep/bin/sweep.sh \n  --repo ../my-monorepo \n  --change "replace moment() with dayjs()" \n  --match "moment(" \n  --test-cmd "npm test --" \n  --workers 3 --limit 10
+examples/codemod-sweep/bin/sweep.sh \
+  --repo ../my-monorepo \
+  --change "replace moment() with dayjs()" \
+  --match "moment(" \
+  --test-cmd "npm test --" \
+  --workers 3 --limit 10
 ```
 
 Its README also documents the one thing that will bite anyone building on
