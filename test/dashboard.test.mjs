@@ -110,6 +110,21 @@ test('what needs a person comes first, and an overdue lease is shown, not repair
   assert.match(html, /in 1h 0m/, 'a timer reads as when it fires, not as a number');
 });
 
+test('a run whose workflow stopped being admitted says so on the page', async () => {
+  const now = 3_000_000;
+  const pf = {
+    runs: async () => ([
+      { instanceId: 'i', workflow: 'wf', key: 'k', status: 'active', state: {}, admitted: false, done: false },
+    ]),
+    timers: async () => [],
+  };
+  const broker = { open: () => ([{ orderId: 'a', tool: 't', why: 'w', role: null, attempt: 1, issuedAt: now }]) };
+  const s = await snapshot({ pf, broker, area: 'x', actor: 'y', now });
+
+  assert.equal(s.runs.length, 1, 'a degraded library must not empty the page');
+  assert.match(page(s), /workflow no longer admitted/);
+});
+
 test('the page escapes what a workflow put in it', async () => {
   const now = 2_000_000;
   const pf = {
