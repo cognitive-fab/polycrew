@@ -10,6 +10,7 @@
 
 import { Polyflow, makeTools } from 'polyflow';
 
+import { Attribution, attributing } from './attribution.mjs';
 import { crewTools } from './crew-tools.mjs';
 import { acquire, askBroker, isBrokerGone, serveBroker } from './link.mjs';
 import { StoreBroker } from './store-broker.mjs';
@@ -60,7 +61,13 @@ export class CrewNode {
     // polyflow's six, plus the two a crew needs. The roles came from the
     // environment at boot and are fixed for the life of the process — a
     // session that could widen its own roles could approve its own work.
-    this.localTools = makeTools(this.pf, crewTools({ broker: this.broker, roles: this.roles }));
+    // One connection, one writer: attribution shares the order store's handle
+    // rather than opening the same file twice.
+    this.actors = new Attribution({ db: this.broker.db });
+    this.localTools = attributing(
+      makeTools(this.pf, crewTools({ broker: this.broker, roles: this.roles })),
+      this.actors,
+    );
     // The stdio path calls handler(args) with no actor, so bind our own here;
     // the /rpc path passes the forwarding session's actor explicitly.
     this.tools = this.localTools.map((t) => ({ ...t, handler: (args) => t.handler(args, this.actor) }));
