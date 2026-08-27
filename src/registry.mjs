@@ -33,20 +33,37 @@ export const registryDir = (area) =>
  */
 export const mintActor = (agent) => `${agent}/${randomBytes(4).toString('hex')}`;
 
-/**
- * The port a crew's broker binds. Derived from the area so the same crew is
- * the same URL every day and two crews on one machine never collide, in a
- * range well clear of anything conventional. FNV-1a, for stability across
- * versions rather than for its distribution.
- */
-export function portFor(area, { base = 41_000, span = 8_000 } = {}) {
+/** FNV-1a over the crew name — chosen for stability across versions, not spread. */
+function hash(area) {
   let h = 0x811c9dc5;
   for (const ch of String(area)) {
     h ^= ch.charCodeAt(0);
     h = Math.imul(h, 0x01000193) >>> 0;
   }
-  return base + (h % span);
+  return h;
 }
+
+const BASE = 41_000;
+const SPAN = 8_000;
+// Coprime with SPAN, so stepping by it visits distinct ports rather than
+// cycling early. It also spreads them across the whole range, which matters:
+// this machine refuses a contiguous 4,000-port block with nothing listening on
+// it (Windows reserves ranges for Hyper-V that `netsh excludedportrange` does
+// not always show), and consecutive candidates would all land inside it.
+const STEP = 1_009;
+
+/**
+ * The ports a crew's broker will try, in order. Derived from the crew name, so
+ * every session of that crew agrees on where to look, and the same crew is the
+ * same URL every day.
+ */
+export function portsFor(area, count = 24) {
+  const h = hash(area);
+  return Array.from({ length: count }, (_, i) => BASE + ((h + i * STEP) % SPAN));
+}
+
+/** The port a crew prefers — the first candidate. */
+export const portFor = (area) => portsFor(area, 1)[0];
 
 /** Is that process still there? EPERM means alive but not ours, which is alive. */
 function alive(pid) {

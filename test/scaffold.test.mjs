@@ -5,44 +5,12 @@
 // boundary ever narrows this fails before anything is built on top of it.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { createRequire } from 'node:module';
-import { dirname, join, resolve } from 'node:path';
-import { createInterface } from 'node:readline';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
 import { entries } from '../src/registry.mjs';
-
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const POLYFLOW = resolve(dirname(createRequire(import.meta.url).resolve('polyflow')), '..');
-
-/** Drive a polycrew process over stdio JSON-RPC, the way a host does. */
-function session(env = {}) {
-  const child = spawn(process.execPath, ['--no-warnings', join(ROOT, 'bin', 'polycrew.mjs')], {
-    cwd: ROOT, env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'pipe'],
-  });
-  const waiters = new Map();
-  let stderr = '';
-  child.stderr.on('data', (b) => { stderr += b; });
-  createInterface({ input: child.stdout, crlfDelay: Infinity }).on('line', (line) => {
-    if (!line.trim()) return;
-    const msg = JSON.parse(line);
-    const w = waiters.get(msg.id);
-    if (w) { waiters.delete(msg.id); w(msg); }
-  });
-
-  let id = 0;
-  const rpc = (method, params) => new Promise((res, rej) => {
-    const mine = ++id;
-    waiters.set(mine, res);
-    setTimeout(() => rej(new Error(`timeout on ${method}\n${stderr}`)), 60_000);
-    child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: mine, method, params }) + '\n');
-  });
-
-  return { rpc, kill: (sig) => child.kill(sig), stderr: () => stderr, pid: child.pid };
-}
+import { POLYFLOW, session } from './session.mjs';
 
 test('polycrew serves polyflow, as a dependency', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'polycrew-'));
@@ -150,7 +118,9 @@ test('two sessions on one crew register separately, and a dead one is reaped', a
   assert.equal(new Set(both.map((e) => e.actor)).size, 2, 'ids neither session chose, and distinct');
   assert.deepEqual([...new Set(both.map((e) => e.port))].length, 1, 'one crew, one broker port');
   assert.deepEqual(both.map((e) => e.pid).sort(), [a.pid, b.pid].sort());
-  assert.match(a.stderr(), /\[polycrew\] actor polycrew\/[0-9a-f]{8} · crew crew-test · port \d+/);
+  assert.match(a.stderr(), /\[polycrew\] actor polycrew\/[0-9a-f]{8} · crew crew-test · (broker|proxy) :\d+/);
+  assert.deepEqual([a.mode(), b.mode()].sort(), ['broker', 'proxy'],
+    'two sessions, one crew, one broker — the port decided it');
 
   // Kill one without letting it clean up: the survivor's next read reaps it.
   a.kill('SIGKILL');
