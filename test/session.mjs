@@ -55,7 +55,10 @@ export function session(env = {}) {
   const mode = () => (roleLine()?.[1] === 'broker on' ? 'broker' : roleLine() ? 'proxy' : null);
   const port = () => Number(roleLine()?.[2]) || null;
 
-  return { rpc, call, mode, port, kill: (sig) => child.kill(sig), stderr: () => stderr, pid: child.pid, exited: () => exited };
+  /** The id this process minted for itself - nothing chose it, including us. */
+  const actor = () => /\[polycrew\] actor (\S+) /.exec(stderr)?.[1] ?? null;
+
+  return { rpc, call, mode, port, actor, kill: (sig) => child.kill(sig), stderr: () => stderr, pid: child.pid, exited: () => exited };
 }
 
 export const settle = (ms = 300) => new Promise((r) => setTimeout(r, ms));

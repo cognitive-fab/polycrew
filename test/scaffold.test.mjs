@@ -28,10 +28,13 @@ test('polycrew serves polyflow, as a dependency', async (t) => {
   assert.equal(init.result.serverInfo.name, 'polycrew');
 
   const listed = await s.rpc('tools/list', {});
-  assert.deepEqual(listed.result.tools.map((x) => x.name).sort(), [
+  const names = listed.result.tools.map((x) => x.name).sort();
+  assert.deepEqual(names.filter((n) => !n.startsWith('workflow_next') && n !== 'workflow_claim'), [
     'workflow_journal', 'workflow_list', 'workflow_report',
     'workflow_signal', 'workflow_start', 'workflow_state',
-  ], 'the six polyflow tools, unchanged');
+  ], 'the six polyflow tools, unchanged — polycrew appends, it does not fork');
+  assert.deepEqual(names.filter((n) => n === 'workflow_next' || n === 'workflow_claim'),
+    ['workflow_claim', 'workflow_next'], 'and the two a crew adds');
 
   // The admission gate ran inside polycrew's process, on the library polyflow ships.
   const catalog = await s.rpc('tools/call', { name: 'workflow_list', arguments: {} });
