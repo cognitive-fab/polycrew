@@ -1,0 +1,25 @@
+{
+  "name": "codemod-target",
+  "description": "One file of a sweep: make the change, then run the tests that cover it. A sweep over a monorepo is one run of this per file, not one run with many orders — so `workflow_next` offers every outstanding file to whoever asks, and the file path is the run's identity, which is what stops the same file being swept twice.",
+  "area": "polycrew/codemod",
+  "inputAction": "START",
+  "tools": {
+    "apply_change": {
+      "tool": "Edit",
+      "why": "make the change described in the sweep, in this one file"
+    },
+    "verify_change": {
+      "tool": "Bash",
+      "why": "run the tests that cover this file — a change nobody verified is not done"
+    }
+  },
+  "key": {
+    "template": "{target}",
+    "fields": {
+      "target": {
+        "pattern": "^[A-Za-z0-9._/-]+$",
+        "description": "the file being changed, repo-relative and with forward slashes, e.g. packages/api/src/db.ts"
+      }
+    }
+  }
+}

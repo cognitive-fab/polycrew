@@ -1,0 +1,18 @@
+{
+  "effects": {
+    "apply_change": {
+      "payloadSchema": {},
+      "onSuccess": { "action": "CHANGE_APPLIED" },
+      "onFailure": { "action": "CHANGE_FAILED", "data": { "reason": "edit-failed" } },
+      "onExhausted": { "action": "CHANGE_FAILED", "data": { "reason": "edit-failed" } },
+      "retry": { "maxAttempts": 2, "baseMs": 1000, "timeoutMs": 900000 }
+    },
+    "verify_change": {
+      "payloadSchema": {},
+      "onSuccess": { "action": "VERIFY_PASSED" },
+      "onFailure": { "action": "VERIFY_FAILED", "data": { "reason": "tests-failed" } },
+      "onExhausted": { "action": "VERIFY_FAILED", "data": { "reason": "tests-failed" } },
+      "retry": { "maxAttempts": 2, "baseMs": 1000, "timeoutMs": 900000 }
+    }
+  }
+}

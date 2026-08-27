@@ -1,0 +1,38 @@
+{
+  "lang": "javascript",
+  "stateKeys": [
+    { "name": "phase", "type": "enum: 'idle' | 'editing' | 'verifying' | 'done' | 'skipped' | 'failed'" },
+    { "name": "reason", "type": "string, why this target ended without a verified change ('' otherwise)" }
+  ],
+  "initState": { "phase": "idle", "reason": "" },
+  "actions": {
+    "START": { "dataFields": {} },
+    "CHANGE_APPLIED": { "dataFields": { "changed": "boolean, false when the file did not need the change" } },
+    "CHANGE_FAILED": { "dataFields": { "reason": "string" } },
+    "VERIFY_PASSED": { "dataFields": {} },
+    "VERIFY_FAILED": { "dataFields": { "reason": "string" } }
+  },
+  "dataDomain": {
+    "START": {},
+    "CHANGE_APPLIED": { "changed": [true, false] },
+    "CHANGE_FAILED": { "reason": ["edit-failed"] },
+    "VERIFY_PASSED": {},
+    "VERIFY_FAILED": { "reason": ["tests-failed"] }
+  },
+  "terminalKey": "phase",
+  "terminalStates": ["done", "skipped", "failed"],
+  "specialRules": [
+    {
+      "name": "a-file-nobody-had-to-change-is-skipped-not-verified",
+      "note": "CHANGE_APPLIED with changed:false ends the target in 'skipped'. Running a test suite for a file that was never touched wastes the crew's time and would report a pass that means nothing.",
+      "whenState": "editing",
+      "whenAction": "CHANGE_APPLIED"
+    },
+    {
+      "name": "stale-completions-reject",
+      "note": "A report arriving in a state that does not await it is an observable rejection (post == pre), never a fault. Several sessions share these targets, so a duplicate report or one that arrives after another actor moved the target on is an ordinary event.",
+      "whenState": "any non-awaiting state",
+      "whenAction": "CHANGE_APPLIED | CHANGE_FAILED | VERIFY_PASSED | VERIFY_FAILED"
+    }
+  ]
+}

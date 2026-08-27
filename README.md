@@ -161,6 +161,20 @@ will not bind a non-loopback interface at all.
 
 ---
 
+## A worked example
+
+[`examples/codemod-sweep`](examples/codemod-sweep) is a runnable script that
+sweeps a change across a monorepo with a crew of headless Claude Code agents:
+one run per file, several agents draining them, and no file edited twice. It is
+the shortest path from "I see what this is for" to seeing it happen.
+
+```bash
+examples/codemod-sweep/bin/sweep.sh \n  --repo ../my-monorepo \n  --change "replace moment() with dayjs()" \n  --match "moment(" \n  --test-cmd "npm test --" \n  --workers 3 --limit 10
+```
+
+Its README also documents the one thing that will bite anyone building on
+polycrew with short-lived agents: **give the crew a broker that outlives them.**
+
 ## Writing a workflow
 
 A workflow is a directory of five files: a contract, a SAM v2 machine, an
@@ -172,7 +186,9 @@ The two worth reading are
 — sequential, with a human approval gate and a timer — and
 [`release-check`](test/fixtures/workflows/release-check), which emits **three
 work orders in one step** and publishes only if all three pass. The second is
-the shape a crew is actually for.
+the shape a crew is actually for, and
+[`codemod-target`](examples/codemod-sweep/workflows/codemod-target) is the
+third shape — one run per unit of work, with the sweep being many of them.
 
 **A workflow that fails its rules is not registered.** Startup enumerates every
 reachable emission path over the domain the contract declares; if a rule can be
