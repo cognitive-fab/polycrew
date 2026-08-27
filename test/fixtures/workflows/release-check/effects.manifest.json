@@ -1,0 +1,32 @@
+{
+  "effects": {
+    "check_security": {
+      "payloadSchema": { "version": "string" },
+      "onSuccess": { "action": "CHECK_PASSED", "data": { "check": "security" } },
+      "onFailure": { "action": "CHECK_FAILED", "data": { "check": "security", "reason": "found-a-problem" } },
+      "onExhausted": { "action": "CHECK_FAILED", "data": { "check": "security", "reason": "found-a-problem" } },
+      "retry": { "maxAttempts": 3, "baseMs": 1000, "timeoutMs": 120000 }
+    },
+    "check_tests": {
+      "payloadSchema": { "version": "string" },
+      "onSuccess": { "action": "CHECK_PASSED", "data": { "check": "tests" } },
+      "onFailure": { "action": "CHECK_FAILED", "data": { "check": "tests", "reason": "found-a-problem" } },
+      "onExhausted": { "action": "CHECK_FAILED", "data": { "check": "tests", "reason": "found-a-problem" } },
+      "retry": { "maxAttempts": 3, "baseMs": 1000, "timeoutMs": 120000 }
+    },
+    "check_licences": {
+      "payloadSchema": { "version": "string" },
+      "onSuccess": { "action": "CHECK_PASSED", "data": { "check": "licences" } },
+      "onFailure": { "action": "CHECK_FAILED", "data": { "check": "licences", "reason": "found-a-problem" } },
+      "onExhausted": { "action": "CHECK_FAILED", "data": { "check": "licences", "reason": "found-a-problem" } },
+      "retry": { "maxAttempts": 3, "baseMs": 1000, "timeoutMs": 120000 }
+    },
+    "publish_release": {
+      "payloadSchema": { "version": "string" },
+      "onSuccess": { "action": "PUBLISHED" },
+      "onFailure": { "action": "PUBLISH_FAILED" },
+      "onExhausted": { "action": "PUBLISH_FAILED", "data": { "reason": "registry-unavailable" } },
+      "retry": { "maxAttempts": 5, "baseMs": 2000, "timeoutMs": 120000 }
+    }
+  }
+}

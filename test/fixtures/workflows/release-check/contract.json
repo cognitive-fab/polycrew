@@ -1,0 +1,40 @@
+{
+  "lang": "javascript",
+  "stateKeys": [
+    { "name": "phase", "type": "enum: 'idle' | 'checking' | 'shipping' | 'shipped' | 'blocked' | 'failed'" },
+    { "name": "checksDone", "type": "integer 0..3, checks that have reported" },
+    { "name": "failures", "type": "integer 0..3, checks that reported a problem" },
+    { "name": "reason", "type": "string, why the run ended without shipping ('' otherwise)" }
+  ],
+  "initState": { "phase": "idle", "checksDone": 0, "failures": 0, "reason": "" },
+  "actions": {
+    "START": { "dataFields": {} },
+    "CHECK_PASSED": { "dataFields": { "check": "string, which check reported" } },
+    "CHECK_FAILED": { "dataFields": { "check": "string, which check reported", "reason": "string" } },
+    "PUBLISHED": { "dataFields": {} },
+    "PUBLISH_FAILED": { "dataFields": { "reason": "string" } }
+  },
+  "dataDomain": {
+    "START": {},
+    "CHECK_PASSED": { "check": ["security", "tests", "licences"] },
+    "CHECK_FAILED": { "check": ["security", "tests", "licences"], "reason": ["found-a-problem"] },
+    "PUBLISHED": {},
+    "PUBLISH_FAILED": { "reason": ["registry-unavailable"] }
+  },
+  "terminalKey": "phase",
+  "terminalStates": ["shipped", "blocked", "failed"],
+  "specialRules": [
+    {
+      "name": "all-three-report-before-anything-ships",
+      "note": "The three checks run at the same time and report in any order. The run leaves 'checking' only when checksDone reaches 3, and it ships only if none of them failed.",
+      "whenState": "checking",
+      "whenAction": "CHECK_PASSED | CHECK_FAILED"
+    },
+    {
+      "name": "stale-completions-reject",
+      "note": "A report arriving in a state that does not await it is an observable rejection (post == pre), never a fault. This is what makes at-least-once reporting by several agents safe.",
+      "whenState": "any non-awaiting state",
+      "whenAction": "CHECK_PASSED | CHECK_FAILED | PUBLISHED | PUBLISH_FAILED"
+    }
+  ]
+}

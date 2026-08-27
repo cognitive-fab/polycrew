@@ -115,6 +115,7 @@ test('two sessions on one crew register separately, and a dead one is reaped', a
   // Both are up once they answer; registration happens before serve().
   await a.rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {} });
   await b.rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {} });
+  await Promise.all([a.ready(), b.ready()]);
 
   const both = entries('crew-test');
   assert.equal(both.length, 2, 'each session owns one registry entry');

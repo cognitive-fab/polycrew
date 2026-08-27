@@ -58,7 +58,27 @@ export function session(env = {}) {
   /** The id this process minted for itself - nothing chose it, including us. */
   const actor = () => /\[polycrew\] actor (\S+) /.exec(stderr)?.[1] ?? null;
 
-  return { rpc, call, mode, port, actor, kill: (sig) => child.kill(sig), stderr: () => stderr, pid: child.pid, exited: () => exited };
+  /**
+   * Wait until the process has logged which role it took.
+   *
+   * An initialize reply arriving on STDOUT is not evidence that the role line
+   * has arrived on STDERR — they are two streams, and reading mode() straight
+   * after an rpc() is a race that only shows up under load. Anything that asks
+   * a session what it is must wait for it to have said so.
+   */
+  const ready = async (timeoutMs = 15_000) => {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (mode()) return mode();
+      if (exited) throw new Error(`session exited before taking a role
+${stderr}`);
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    throw new Error(`session never said what role it took
+${stderr}`);
+  };
+
+  return { rpc, call, mode, port, actor, ready, kill: (sig) => child.kill(sig), stderr: () => stderr, pid: child.pid, exited: () => exited };
 }
 
 export const settle = (ms = 300) => new Promise((r) => setTimeout(r, ms));

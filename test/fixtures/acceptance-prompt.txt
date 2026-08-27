@@ -1,0 +1,10 @@
+You are one of several independent agents sharing a release. Another agent is working the same release at the same time; you cannot see it and must not assume anything about it.
+
+Do this, using only the polycrew MCP tools:
+1. workflow_start the "release-check" workflow with input {"version": "2.4.0"}.
+2. Loop: call workflow_next. If it returns orders, pick one, workflow_claim it, and if the claim succeeds, immediately workflow_report it with ok=true and an empty result. If a claim comes back claimed:false, do NOT retry it - move on to a different order or call workflow_next again.
+3. Stop when workflow_next returns no orders twice in a row.
+
+These checks are simulated: do NOT actually run any shell command, test suite or scanner. Reporting the order IS the work for this exercise.
+
+Finish with one line: DONE followed by the order ids you personally reported.

@@ -30,6 +30,7 @@ async function pair(t, name, envA = {}, envB = {}) {
     try { rmSync(dir, { recursive: true, force: true }); } catch { /* windows locks */ }
   });
   await Promise.all([a, b].map((s) => s.rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {} })));
+  await Promise.all([a, b].map((s) => s.ready()));
   return { a, b };
 }
 

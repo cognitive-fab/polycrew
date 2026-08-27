@@ -1,0 +1,21 @@
+{
+  "name": "release-check",
+  "description": "Run three release checks at the same time, then publish only if all three passed. The fan-out shape: several work orders are open at once, so a crew can share them, and nothing ships until every one has reported.",
+  "area": "polycrew/acceptance",
+  "inputAction": "START",
+  "tools": {
+    "check_security": { "tool": "Bash", "why": "scan the release for known-vulnerable dependencies" },
+    "check_tests": { "tool": "Bash", "why": "run the test suite against the release candidate" },
+    "check_licences": { "tool": "Bash", "why": "check every dependency licence is one we allow" },
+    "publish_release": { "tool": "Bash", "target": "registry", "why": "publish the release - the consequential step, and the reason the checks exist" }
+  },
+  "key": {
+    "template": "{version}",
+    "fields": {
+      "version": {
+        "pattern": "^\\d+\\.\\d+\\.\\d+$",
+        "description": "the release being checked, e.g. 2.4.0"
+      }
+    }
+  }
+}

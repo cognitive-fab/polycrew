@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "polycrew": {
+      "command": "node",
+      "args": ["--no-warnings", "C:/Users/jjdub/code/polycrew/bin/polycrew.mjs"],
+      "env": {
+        "POLYCREW_WORKFLOWS": "C:/Users/jjdub/code/polycrew/test/fixtures/workflows",
+        "POLYCREW_INSTANCE": "acceptance",
+        "POLYCREW_DB": "C:/Users/jjdub/AppData/Local/Temp/pc-accept/crew.sqlite",
+        "POLYCREW_HOME": "C:/Users/jjdub/AppData/Local/Temp/pc-accept/home",
+        "POLYCREW_AGENT": "claude-code",
+        "POLYCREW_LEASE_MS": "60000"
+      }
+    }
+  }
+}

@@ -32,7 +32,10 @@ function crew(t, n, name) {
   return { all, env, dir };
 }
 
-const up = (s) => s.rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {} });
+const up = async (s) => {
+  await s.rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {} });
+  await s.ready();   // stdout replied; wait for stderr to say which role it took
+};
 
 test('three sessions race for one port and exactly one wins', async (t) => {
   const { all } = crew(t, 3, 'race');
@@ -104,6 +107,7 @@ test('a proxy takes over when the broker dies, and the work survives', async (t)
   await Promise.all(all.map(up));
 
   const broker = all.find((s) => s.mode() === 'broker');
+  assert.ok(broker, `no session became broker: ${JSON.stringify(all.map((s) => [s.mode(), s.port()]))}`);
   const survivors = all.filter((s) => s !== broker);
   const port = broker.port();
 
@@ -149,4 +153,34 @@ test('a tool that throws is a failed call, not a dead broker', async (t) => {
   // The proxy must not have read either failure as an election and grabbed the port.
   assert.equal(proxy.mode(), 'proxy');
   assert.ok((await proxy.call('workflow_list', {})).workflows.length > 0, 'and it still works');
+});
+
+test('two projects that share a name are two crews, not one', async (t) => {
+  // Candidate port lists are derived and they OVERLAP: one crew's first choice
+  // is another's fourteenth. And project directories are called 'web', 'api',
+  // 'app' all over a machine, so the name alone cannot be the identity either.
+  // Without both checks a session finds a live broker on a shared port and
+  // proxies into it, joining another project's runs out of another project's
+  // database — which is how this was found, as two test files that happened to
+  // use the same crew name.
+  const one = crew(t, 2, 'shared-name');
+  await Promise.all(one.all.map(up));
+
+  // Same crew NAME, different store: a different project on the same machine.
+  const two = crew(t, 2, 'shared-name');
+  await Promise.all(two.all.map(up));
+
+  const brokerOf = (c) => c.all.find((s) => s.mode() === 'broker');
+  assert.ok(brokerOf(one), 'the first project elected a broker');
+  assert.ok(brokerOf(two), 'and so did the second, rather than joining the first');
+  assert.notEqual(brokerOf(one).port(), brokerOf(two).port(), 'two crews, two ports');
+
+  // And their work stays apart.
+  const a = await one.all[0].call('workflow_start', {
+    workflow: 'customer-brief', input: { date: '2026-07-07' },
+  });
+  assert.equal((await one.all[1].call('workflow_next', {})).orders.length, 1);
+  assert.equal((await two.all[0].call('workflow_next', {})).orders.length, 0,
+    'the other project cannot see, let alone take, this run’s work');
+  assert.ok(a.instance);
 });

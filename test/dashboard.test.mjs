@@ -165,6 +165,7 @@ test('the page and the JSON say what the tools say', async (t) => {
     try { rmSync(dir, { recursive: true, force: true }); } catch { /* windows locks */ }
   });
   await s.rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {} });
+  await s.ready();
 
   const started = await s.call('workflow_start', {
     workflow: 'customer-brief', input: { date: '2027-01-01' },
