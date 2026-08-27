@@ -44,6 +44,7 @@ node bin/polycrew.mjs      # an MCP stdio server
 | `POLYCREW_INSTANCE` | instance area — one crew | the current directory's name |
 | `POLYCREW_ROLES` | roles this session may play | none |
 | `POLYCREW_HOME` | where the registry lives | `~/.polyflow` |
+| `POLYCREW_ORDERS` | order store | beside the run store |
 
 **Identity and roles come from the process, never from a tool argument.** A
 session that could name itself could collide with another, and one that could
@@ -58,7 +59,11 @@ gate. Anything a model can say, a model can say wrongly.
       registry under `~/.polyflow/registry/<crew>/<actor>.json`, one file per
       session, reaped when the process is gone. The port a crew's broker will
       bind is derived from its name.
-- [ ] 3 — the order store and a claiming broker
+- [x] **3 — the order store and a claiming broker.** Orders live in a table,
+      not one process's memory. A claim is a lease: it holds while the actor
+      works, lapses on silence, and only the holder may report. An order
+      with no role stays open to anyone, which is how a single-participant
+      run keeps working unchanged.
 - [ ] 4 — election and proxy: the first process on a crew binds its port and
       becomes the broker; the rest proxy to it
 - [ ] 5 — the crew tools: `workflow_next`, `workflow_claim`
